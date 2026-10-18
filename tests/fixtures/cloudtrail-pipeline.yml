@@ -1,0 +1,11 @@
+name: Scanner CloudTrail index
+priority: 100
+transformations:
+  - id: cloudtrail_index
+    type: add_condition
+    conditions:
+      '@index': cloudtrail
+    rule_conditions:
+      - type: logsource
+        product: aws
+        service: cloudtrail

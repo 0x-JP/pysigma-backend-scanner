@@ -1,0 +1,18 @@
+aws_cloudtrail_disable_logging.yml: >-
+  eventSource = 'cloudtrail.amazonaws.com' and (eventName = 'StopLogging' or eventName = 'UpdateTrail' or eventName = 'DeleteTrail')
+aws_ec2_startup_script_change.yml: >-
+  eventSource = 'ec2.amazonaws.com' and requestParameters.attribute = 'userData' and eventName = 'ModifyInstanceAttribute'
+aws_guardduty_disruption.yml: >-
+  eventSource = 'guardduty.amazonaws.com' and eventName = 'CreateIPSet'
+aws_rds_change_master_password.yml: >-
+  eventSource = 'rds.amazonaws.com' and responseElements.pendingModifiedValues.masterUserPassword = '*' and eventName = 'ModifyDBInstance'
+aws_rds_public_db_restore.yml: >-
+  eventSource = 'rds.amazonaws.com' and responseElements.publiclyAccessible = 'true' and eventName = 'RestoreDBInstanceFromDBSnapshot'
+aws_root_account_usage.yml: >-
+  userIdentity.type = 'Root' and not eventType = 'AwsServiceEvent'
+aws_securityhub_finding_evasion.yml: >-
+  eventSource = 'securityhub.amazonaws.com' and (eventName = 'BatchUpdateFindings' or eventName = 'DeleteInsight' or eventName = 'UpdateFindings' or eventName = 'UpdateInsight')
+proc_creation_win_conhost_headless_powershell.yml: >-
+  (Image = '*\\conhost.exe' or OriginalFileName = 'CONHOST.EXE') and CommandLine = '*--headless*' and CommandLine = '*powershell*'
+proc_creation_win_finger_execution.yml: >-
+  OriginalFileName = 'finger.exe' or Image = '*\\finger.exe'

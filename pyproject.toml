@@ -1,0 +1,26 @@
+[project]
+name = "pysigma-backend-scanner"
+version = "0.1.0.dev0"
+description = "Convert Sigma detection rules into Scanner queries"
+readme = "README.md"
+license = "LGPL-2.1-only"
+authors = [{ name = "0x-JP" }]
+requires-python = ">=3.10,<4.0"
+dependencies = ["pysigma>=1.5.1,<2"]
+
+[project.urls]
+Repository = "https://github.com/0x-JP/pysigma-backend-scanner"
+
+[tool.poetry]
+packages = [{ include = "sigma" }]
+include = [
+    { path = "tests", format = "sdist" },
+]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^9.1"
+sigma-cli = "^3.1"
+
+[build-system]
+requires = ["poetry-core>=2,<3"]
+build-backend = "poetry.core.masonry.api"
