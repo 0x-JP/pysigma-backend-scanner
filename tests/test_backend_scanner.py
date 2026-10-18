@@ -29,6 +29,7 @@ from sigma.exceptions import SigmaFeatureNotSupportedByBackendError, SigmaValueE
     ("elapsed|lt", 100, "elapsed < 100"),
     ("elapsed|gt", -1, "elapsed > -1"),
     ("elapsed|lte", 0.5, "elapsed <= 0.5"),
+    ("elapsed|neq", 100, "not elapsed = 100"),
     ("name|exists", True, "name = *"),
     ("name|exists", False, "not name = *"),
 ])
@@ -75,13 +76,19 @@ def test_multiple_conditions(convert_rule):
     }) == ["name = 'one'", "name = 'two'"]
 
 
+def test_numeric_inequality_negation_preserves_pysigma_semantics(convert_rule):
+    assert convert_rule({
+        "selection": {"elapsed|neq": 0}, "condition": "not selection",
+    }) == ["not (not elapsed = 0)"]
+
+
 @pytest.mark.parametrize("field, value", [
     ("name|re", "a(?=b)"),
     ("enabled", True),
     ("enabled", False),
     ("ip|cidr", "10.0.0.0/8"),
     ("name|fieldref|contains", "other"),
-    ("field*", "value"),
+    ("field?", "value"),
 ])
 def test_unsupported_features_fail_explicitly(convert_rule, field, value):
     with pytest.raises(SigmaFeatureNotSupportedByBackendError):

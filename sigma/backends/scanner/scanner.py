@@ -33,13 +33,13 @@ class ScannerBackend(TextQueryBackend):
     eq_token = " = "
     field_quote = "`"
     field_quote_pattern = re.compile(
-        r"^(?!(?:and|or|not|let|from|in)\Z)[a-zA-Z_@%][a-zA-Z0-9_@%.]*\Z",
+        r"^(?!(?:and|or|not|let|from|in)\Z)[a-zA-Z_@%*][a-zA-Z0-9_@%.*\[\]]*\Z",
         re.IGNORECASE,
     )
     field_quote_pattern_negation = True
     field_escape = "\\"
     field_escape_quote = True
-    field_escape_pattern = re.compile(r"\\")
+    field_escape_pattern = re.compile(r"\\(?!\*)")
     str_quote = "'"
     escape_char = "\\"
     wildcard_multi = "*"
@@ -72,6 +72,7 @@ class ScannerBackend(TextQueryBackend):
                         if isinstance(getattr(leaf, "value", None), SigmaFieldReference)
                     },
                     "eval": [],
+                    "aliases": [],
                 }
                 if any(self.needs_eval(leaf) for leaf in leaves):
                     return self.convert_scalar_query(cond, state)
@@ -98,6 +99,7 @@ class ScannerBackend(TextQueryBackend):
     def convert_scalar_query(self, cond, state):
         prefilters = []
         postfilters = []
+        postfilter_patterns = []
         for part in self.conjuncts(cond):
             leaves = list(self.condition_leaves(part))
             has_scalar = any(self.needs_eval(leaf) for leaf in leaves)
@@ -110,11 +112,21 @@ class ScannerBackend(TextQueryBackend):
                     "Unfielded searches cannot share an OR/NOT branch with scalar predicates: "
                     "eval columns would change the searched event"
                 )
+            if has_scalar:
+                postfilter_patterns.extend(
+                    leaf.field for leaf in leaves
+                    if self.has_field_wildcard(getattr(leaf, "field", ""))
+                )
             converted = self.convert_condition(part, state)
             if isinstance(part, (ConditionAND, ConditionOR)):
                 converted = self.group_expression.format(expr=converted)
             (postfilters if has_scalar else prefilters).append(converted)
         prefilter = " and ".join(prefilters) or "*"
+        for pattern in postfilter_patterns:
+            if any(self.field_pattern_matches(pattern, alias) for alias in state.processing_state["scanner"]["aliases"]):
+                raise SigmaFeatureNotSupportedByBackendError(
+                    "Wildcard postfilter would match generated eval columns; filter it before eval"
+                )
         assignments = ", ".join(state.processing_state["scanner"]["eval"])
         return f"{prefilter} | eval {assignments} | where {' and '.join(postfilters)}"
 
@@ -136,6 +148,10 @@ class ScannerBackend(TextQueryBackend):
         return self.scalar_predicate(f"coalesce(regex.is_match({field}, /{pattern}/{flags}), false)", "regex", state)
 
     def scalar_field(self, field_name):
+        if self.has_field_wildcard(field_name):
+            raise SigmaFeatureNotSupportedByBackendError(
+                "Scalar expressions require a single field, not a wildcard field pattern"
+            )
         field = self.escape_and_quote_field(field_name)
         return field if field.startswith("`") else f"`{field}`"
 
@@ -147,6 +163,7 @@ class ScannerBackend(TextQueryBackend):
             number += 1
             alias = f"_sigma_{kind}_{number}"
         context["fields"].add(alias)
+        context["aliases"].append(alias)
         context["eval"].append(f"{alias} = {expression}")
         return f'{alias} = "true"'
 
@@ -174,9 +191,22 @@ class ScannerBackend(TextQueryBackend):
         return super().convert_condition_not(cond, state)
 
     def escape_and_quote_field(self, field_name):
-        if "*" in field_name or "?" in field_name:
-            raise SigmaFeatureNotSupportedByBackendError("Scanner field wildcard matching is not implemented")
+        if "?" in field_name:
+            raise SigmaFeatureNotSupportedByBackendError("Scanner does not document ? as a field wildcard")
         return self.escape_controls(super().escape_and_quote_field(field_name))
+
+    @staticmethod
+    def has_field_wildcard(field_name):
+        return "*" in field_name.replace(r"\*", "")
+
+    @staticmethod
+    def field_pattern_matches(pattern, field_name):
+        expression = "".join(
+            ".*" if part == "**" else r"[^.\[\]]*" if part == "*"
+            else re.escape(part.replace(r"\*", "*"))
+            for part in re.split(r"(\\\*|\*{1,2})", pattern)
+        )
+        return re.fullmatch(expression, field_name, re.DOTALL) is not None
 
     @staticmethod
     def escape_controls(value):
@@ -189,7 +219,7 @@ class ScannerBackend(TextQueryBackend):
 
     def convert_condition_field_compare_op_val(self, cond, state):
         if cond.value.op not in self.compare_operators:
-            raise SigmaFeatureNotSupportedByBackendError("Scanner numeric inequality is not implemented")
+            raise SigmaFeatureNotSupportedByBackendError("Unsupported numeric comparison operator")
         return super().convert_condition_field_compare_op_val(cond, state)
 
     def convert_condition_field_eq_val_str(self, cond, state):

@@ -36,7 +36,13 @@ Without an applicable index pipeline, output is an unscoped predicate.
 
 Supports string equality, `cased`, `contains`, `startswith`, `endswith`, `*`
 wildcards, boolean conditions, lists, numeric comparisons and field existence.
+The `neq` modifier uses pySigma's negated equality rather than an undocumented
+native `!=` filter operator.
 Field string matching uses whole-field equality, not Scanner token matching (`:`).
+Native filters support field patterns: `*` stays within a path segment, `**`
+crosses path/array boundaries, and `[*]` selects array elements. Use `\*` for a
+literal asterisk. Scalar operands must reference one field. Wildcard postfilters
+that would also match generated eval columns are rejected; use them before `eval`.
 Unfielded keywords use Scanner's native quoted free-text search, including its
 token boundaries. No field is inferred and no surrounding wildcards are added.
 
@@ -53,7 +59,7 @@ scope. Generated `_sigma_regex_*`, `_sigma_null_*` and `_sigma_fieldref_*` colum
 are reserved for intermediate results.
 
 CIDR, field-reference substring matching, typed booleans, single-character
-wildcards, field wildcards and correlations raise conversion errors.
+wildcards (`?`) and correlations raise conversion errors.
 Deployment formats are not implemented. Validation is offline; actual Scanner
 execution, Unicode case folding and schema-dependent array/missing-value behaviour
 remain unverified.
