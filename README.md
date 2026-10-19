@@ -1,21 +1,30 @@
 # pySigma Scanner Backend
 
-The `scanner` backend for pySigma provides `sigma.backends.scanner.ScannerBackend`.
-Its default output is a [Scanner query](https://docs.scanner.dev/scanner/using-scanner-complete-feature-reference/querying-and-analysis/query-syntax), not a deployed detection rule.
+This is the [Scanner](https://scanner.dev/) backend for
+[pySigma](https://github.com/SigmaHQ/pySigma). It provides the package
+`sigma.backends.scanner` with the `ScannerBackend` class.
 
-## Installation and usage
+The `default` output format produces Scanner queries.
+
+## Installation
 
 Requires Python 3.10 or newer. Install from this checkout:
 
 ```sh
 python -m pip install . sigma-cli
+```
+
+## Usage
+
+```sh
 sigma convert -t scanner -p pipeline.yml path/to/rule.yml
 ```
 
-Supply your index using a standard pySigma processing pipeline (`pipeline.yml`):
+Use a pySigma processing pipeline to select your Scanner index and map Sigma
+fields to your log schema. For example, `pipeline.yml` for CloudTrail:
 
 ```yaml
-name: Scanner CloudTrail index
+name: Scanner CloudTrail
 priority: 100
 transformations:
   - id: cloudtrail_index
@@ -28,43 +37,21 @@ transformations:
         service: cloudtrail
 ```
 
-Replace `cloudtrail` with your index alias. Add logsource-specific conditions and
-field mappings for other datasets. No `@scnr.source_type` filter is added.
-Without an applicable index pipeline, output is an unscoped predicate.
+Replace `cloudtrail` with your index alias. Without an index condition, queries
+search all indexes. No field mappings or source-type filters are added automatically.
 
-## Query support
+## Limitations
 
-Supports string equality, `cased`, `contains`, `startswith`, `endswith`, `*`
-wildcards, boolean conditions, lists, numeric comparisons and field existence.
-The `neq` modifier uses pySigma's negated equality rather than an undocumented
-native `!=` filter operator.
-Field string matching uses whole-field equality, not Scanner token matching (`:`).
-Native filters support field patterns: `*` stays within a path segment, `**`
-crosses path/array boundaries, and `[*]` selects array elements. Use `\*` for a
-literal asterisk. Scalar operands must reference one field. Wildcard postfilters
-that would also match generated eval columns are rejected; use them before `eval`.
-Unfielded keywords use Scanner's native quoted free-text search, including its
-token boundaries. No field is inferred and no surrounding wildcards are added.
-
-Regex uses Scanner's beta [scalar functions](https://docs.scanner.dev/scanner/using-scanner-complete-feature-reference/beta-features/scalar-functions-and-operators):
-`regex.is_match` through `eval`, followed by `where`.
-Supports `re`, `re|i`, `re|m` and `re|s`; patterns must be compatible with Scanner's
-Rust regex engine (no lookaround, backreferences or atomic groups). Native AND
-filters and index selection stay before `eval`; mixed OR/NOT branches are retained
-in the final filter. Null checks (`field == null`) and field-to-field equality also
-use this eval path. Field equality is value-sensitive and requires non-null operands.
-Index selection inside a scalar-containing OR/NOT branch is rejected, as are
-unfielded searches in those branches: generated columns would change their search
-scope. Generated `_sigma_regex_*`, `_sigma_null_*` and `_sigma_fieldref_*` columns
-are reserved for intermediate results.
-
-CIDR, field-reference substring matching, typed booleans, single-character
-wildcards (`?`) and correlations raise conversion errors.
-Deployment formats are not implemented. Validation is offline; actual Scanner
-execution, Unicode case folding and schema-dependent array/missing-value behaviour
-remain unverified.
-Cloud rules often assume normalized fields or serialized objects. Map these to
-your ingested fields; successful conversion alone does not establish a match.
+- CIDR matching, field-reference substring matching, correlation rules and
+  detection deployment formats are not supported.
+- Regex, single-character wildcards (`?`), null checks and field-to-field equality
+  use Scanner's beta [scalar functions](https://docs.scanner.dev/scanner/using-scanner-complete-feature-reference/beta-features/scalar-functions-and-operators).
+  These operations require individual fields, not wildcard field patterns.
+  Regex must be compatible with Rust regex syntax: no lookaround, backreferences
+  or atomic groups.
+- Unfielded keywords use Scanner's token boundaries. Index selection and unfielded
+  searches cannot share an OR/NOT branch with scalar predicates. Wildcard filters
+  that would match generated `_sigma_*` columns are also rejected.
 
 ## Development
 
@@ -74,10 +61,7 @@ poetry run pytest
 poetry build
 ```
 
-Tests include upstream Sigma rules and installed CLI conversion. See
-[fixture provenance](tests/fixtures/README.md) for sources and comparison notes.
-
 ## License
 
-Backend code: [LGPL-2.1-only](LICENSE). Upstream Sigma test rules retain their
+[LGPL-2.1-only](LICENSE). Upstream Sigma test rules retain their
 [DRL-1.1 license](tests/fixtures/DRL-1.1.md).

@@ -8,6 +8,7 @@ from sigma.processing.pipeline import ProcessingPipeline
 from sigma.backends.scanner import ScannerBackend
 
 
+# SigmaHQ/sigma snapshot: b7920ed31356fb7f6a9275b34737d8604c65bac3 (DRL-1.1).
 FIXTURES = Path(__file__).parent / "fixtures"
 EXPECTED = yaml.safe_load((FIXTURES / "expected-queries.yml").read_text())
 

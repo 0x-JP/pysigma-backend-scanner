@@ -16,7 +16,9 @@ from sigma.types import (
     SigmaFieldReference,
     SigmaNull,
     SigmaRegularExpression,
+    SigmaRegularExpressionFlag,
     SigmaString,
+    SpecialChars,
 )
 
 
@@ -56,11 +58,17 @@ class ScannerBackend(TextQueryBackend):
     }
     field_exists_expression = "{field} = *"
     field_not_exists_expression = "not {field} = *"
-    bool_values = {True: None, False: None}
+    bool_values = {True: "'true'", False: "'false'"}
+    unbound_value_num_expression = "** = {value}"
 
     @staticmethod
     def needs_eval(leaf):
-        return isinstance(getattr(leaf, "value", None), (SigmaRegularExpression, SigmaNull, SigmaFieldReference))
+        value = getattr(leaf, "value", None)
+        return isinstance(value, (SigmaRegularExpression, SigmaNull, SigmaFieldReference)) or (
+            isinstance(leaf, ConditionFieldEqualsValueExpression)
+            and isinstance(value, SigmaString)
+            and any(part is SpecialChars.WILDCARD_SINGLE for part in value.iter_parts())
+        )
 
     def convert_condition(self, cond, state):
         try:
@@ -242,6 +250,18 @@ class ScannerBackend(TextQueryBackend):
             if type(cond.value) is not SigmaString:
                 raise SigmaConfigurationError("Scanner index selectors must be plain strings")
             return self.convert_condition_field_eq_val_str(cond, state)
+        if isinstance(cond.value, SigmaString) and any(
+            part is SpecialChars.WILDCARD_SINGLE for part in cond.value.iter_parts()
+        ):
+            pattern = r"\A(?:" + str(cond.value.to_regex().regexp) + r")\Z"
+            flags = {SigmaRegularExpressionFlag.DOTALL}
+            if not isinstance(cond.value, SigmaCasedString):
+                flags.add(SigmaRegularExpressionFlag.IGNORECASE)
+            return self.convert_condition_field_eq_val_re(
+                ConditionFieldEqualsValueExpression(
+                    cond.field, SigmaRegularExpression(pattern, flags)
+                ), state
+            )
         return super().convert_condition_field_eq_val(cond, state)
 
     def convert_condition_field_eq_val_cidr(self, cond, state):

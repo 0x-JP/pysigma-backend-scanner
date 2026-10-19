@@ -1,5 +1,5 @@
 import pytest
-from sigma.exceptions import SigmaFeatureNotSupportedByBackendError, SigmaValueError
+from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
 
 
 @pytest.mark.parametrize(("field", "value", "expected"), [
@@ -25,6 +25,8 @@ from sigma.exceptions import SigmaFeatureNotSupportedByBackendError, SigmaValueE
     ("field\nname", "value", r"`field\u000aname` = 'value'"),
     ("name\n", "value", r"`name\u000a` = 'value'"),
     ("status", 200, "status = 200"),
+    ("enabled", True, "enabled = 'true'"),
+    ("enabled", False, "enabled = 'false'"),
     ("elapsed|gte", 100, "elapsed >= 100"),
     ("elapsed|lt", 100, "elapsed < 100"),
     ("elapsed|gt", -1, "elapsed > -1"),
@@ -84,8 +86,6 @@ def test_numeric_inequality_negation_preserves_pysigma_semantics(convert_rule):
 
 @pytest.mark.parametrize("field, value", [
     ("name|re", "a(?=b)"),
-    ("enabled", True),
-    ("enabled", False),
     ("ip|cidr", "10.0.0.0/8"),
     ("name|fieldref|contains", "other"),
     ("field?", "value"),
@@ -95,13 +95,22 @@ def test_unsupported_features_fail_explicitly(convert_rule, field, value):
         convert_rule({"selection": {field: value}, "condition": "selection"})
 
 
-def test_single_character_wildcard_fails_explicitly(convert_rule):
-    with pytest.raises(SigmaValueError, match="Single-character wildcard"):
-        convert_rule({"selection": {"name": "a?b"}, "condition": "selection"})
+def test_single_character_wildcard_uses_anchored_regex(convert_rule):
+    assert convert_rule({"selection": {"name": "a?b"}, "condition": "selection"}) == [
+        r'* | eval _sigma_regex_0 = coalesce(regex.is_match(`name`, /\A(?:a.b)\z/is), false)'
+        ' | where _sigma_regex_0 = "true"'
+    ]
+    assert convert_rule({"selection": {"name|cased": "A?b"}, "condition": "selection"}) == [
+        r'* | eval _sigma_regex_0 = coalesce(regex.is_match(`name`, /\A(?:A.b)\z/s), false)'
+        ' | where _sigma_regex_0 = "true"'
+    ]
 
 
 def test_keyword_search_uses_native_unfielded_search(convert_rule):
     assert convert_rule({"selection": ["keyword"], "condition": "selection"}) == ["'keyword'"]
+    assert convert_rule({"selection": [0, 6], "condition": "selection"}) == [
+        "** = 0 or ** = 6"
+    ]
 
 
 def test_errors_can_be_collected():
