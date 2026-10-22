@@ -1,6 +1,10 @@
 import pytest
+from sigma.collection import SigmaCollection
 from sigma.exceptions import SigmaConfigurationError
 from sigma.processing.pipeline import ProcessingPipeline
+
+from sigma.backends.scanner import ScannerBackend
+from sigma.pipelines.scanner import scanner_cloudtrail_pipeline
 
 
 def index_pipeline(value):
@@ -51,3 +55,41 @@ def test_multiple_indexes_remain_selectors(convert_rule):
 def test_index_type_must_be_string(convert_rule, index):
     with pytest.raises(SigmaConfigurationError, match="plain strings"):
         convert_rule({"selection": {"name": "one"}, "condition": "selection"}, index_pipeline(index))
+
+
+@pytest.mark.parametrize("logsource, expected_field", [
+    ({"product": "aws", "service": "cloudtrail"}, "@ecs.event.action"),
+    ({"product": "aws", "service": "other"}, "eventName"),
+    ({"product": "azure", "service": "auditlogs"}, "eventName"),
+])
+def test_ecs_cloudtrail_pipeline_is_source_specific(logsource, expected_field):
+    rules = SigmaCollection.from_dicts([{
+        "title": "Source-specific mapping",
+        "logsource": logsource,
+        "detection": {"selection": {"eventName": "CreateBucket"}, "condition": "selection"},
+    }])
+    assert ScannerBackend(scanner_cloudtrail_pipeline()).convert(rules) == [
+        f"{expected_field} = 'CreateBucket'"
+    ]
+
+
+def test_ecs_cloudtrail_preserves_modifiers_and_native_fields():
+    rules = SigmaCollection.from_dicts([{
+        "title": "CloudTrail ECS and native fields",
+        "logsource": {"product": "aws", "service": "cloudtrail"},
+        "detection": {
+            "selection": {
+                "eventName": ["StopLogging", "DeleteTrail"],
+                "userAgent|contains": "aws-cli",
+                "errorCode|exists": False,
+                "sourceIPAddress": "AWS Internal",
+                "requestParameters.enable": False,
+            },
+            "condition": "selection",
+        },
+    }])
+    assert ScannerBackend(scanner_cloudtrail_pipeline()).convert(rules) == [
+        "(@ecs.event.action = 'StopLogging' or @ecs.event.action = 'DeleteTrail')"
+        " and @ecs.user_agent = '*aws-cli*' and not errorCode = *"
+        " and sourceIPAddress = 'AWS Internal' and requestParameters.enable = 'false'"
+    ]

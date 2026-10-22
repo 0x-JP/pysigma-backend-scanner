@@ -40,6 +40,19 @@ transformations:
 Replace `cloudtrail` with your index alias. Without an index condition, queries
 search all indexes. No field mappings or source-type filters are added automatically.
 
+### Scanner CloudTrail
+
+For AWS CloudTrail logs using Scanner's [ECS normalization](https://docs.scanner.dev/scanner/using-scanner-complete-feature-reference/data-transformation-and-enrichment/data-transformations),
+the optional `scanner_cloudtrail` pipeline maps documented fields into `@ecs`:
+
+```sh
+sigma convert -t scanner -p scanner_cloudtrail path/to/cloudtrail-rule.yml
+```
+
+It applies only to AWS CloudTrail rules, retains native paths for unmapped fields,
+and does not select an index. Scanner preserves the original fields, so this
+pipeline is optional even when ECS normalization is enabled.
+
 ## Limitations
 
 - CIDR matching, field-reference substring matching, correlation rules and
